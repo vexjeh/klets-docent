@@ -6,14 +6,16 @@ NT2 audio-analyse tool voor docenten. Upload geluidsfragmenten van cursisten, kr
 
 - **Frontend**: React + Vite
 - **Backend**: Vercel serverless functions
-- **STT**: Mistral (voxtral-mini-2602)
+- **STT**: OpenAI Whisper (whisper-1)
 - **LLM**: Mistral Large
 
 ## Deploy naar Vercel
 
 1. Fork/clone deze repo
 2. Link met Vercel
-3. Zet env var `MISTRAL_API_KEY` in Vercel dashboard
+3. Zet deze env vars in Vercel dashboard:
+   - `OPENAI_API_KEY` — voor transcriptie (Whisper)
+   - `MISTRAL_API_KEY` — voor analyse (Mistral Large)
 4. Deploy!
 
 ## Lokaal ontwikkelen
@@ -23,4 +25,4 @@ npm install
 npm run dev
 ```
 
-Zorg dat je een `.env.local` hebt met `VITE_MISTRAL_API_KEY=...` (gebruikt door de API endpoints).
+Zorg dat je een `.env.local` hebt met de API keys.

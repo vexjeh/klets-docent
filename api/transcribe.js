@@ -1,13 +1,13 @@
-const MISTRAL_BASE = 'https://api.mistral.ai/v1';
+const OPENAI_BASE = 'https://api.openai.com/v1';
 
 export default async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const apiKey = process.env.MISTRAL_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'MISTRAL_API_KEY niet ingesteld' });
+    return res.status(500).json({ error: 'OPENAI_API_KEY niet ingesteld' });
   }
 
   const { audioBase64, audioFormat } = req.body || {};
@@ -19,54 +19,40 @@ export default async (req, res) => {
   try {
     const audioBuffer = Buffer.from(audioBase64, 'base64');
 
-    // Step 1: Upload file to Mistral
-    const uploadForm = new FormData();
-    const blob = new Blob([audioBuffer], { type: audioFormat || 'audio/webm' });
-    uploadForm.append('file', blob, 'audio.webm');
-    uploadForm.append('purpose', 'audio');
+    // Build multipart form for Whisper
+    const form = new FormData();
+    const ext = (audioFormat || 'audio/webm').includes('mp3') ? 'mp3' :
+                (audioFormat || '').includes('m4a') ? 'm4a' :
+                (audioFormat || '').includes('wav') ? 'wav' : 'webm';
+    const mime = audioFormat || 'audio/webm';
+    const blob = new Blob([audioBuffer], { type: mime });
+    form.append('file', blob, `audio.${ext}`);
+    form.append('model', 'whisper-1');
+    form.append('language', 'nl');
+    form.append('response_format', 'json');
 
-    const uploadRes = await fetch(`${MISTRAL_BASE}/files`, {
+    const response = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-      body: uploadForm,
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: form,
     });
 
-    if (!uploadRes.ok) {
-      const err = await uploadRes.text();
-      return res.status(uploadRes.status).json({
-        error: `Upload mislukt: ${uploadRes.status}`,
+    if (!response.ok) {
+      const err = await response.text();
+      return res.status(response.status).json({
+        error: `Whisper transcriptie mislukt: ${response.status}`,
         detail: err,
       });
     }
 
-    const { id: fileId } = await uploadRes.json();
-
-    // Step 2: Transcribe
-    const transcribeForm = new FormData();
-    transcribeForm.append('model', 'voxtral-mini-2602');
-    transcribeForm.append('language', 'nl');
-    transcribeForm.append('file_id', fileId);
-
-    const transcribeRes = await fetch(`${MISTRAL_BASE}/audio/transcriptions`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-      body: transcribeForm,
-    });
-
-    if (!transcribeRes.ok) {
-      const err = await transcribeRes.text();
-      return res.status(transcribeRes.status).json({
-        error: `Transcriptie mislukt: ${transcribeRes.status}`,
-        detail: err,
-      });
-    }
-
-    const data = await transcribeRes.json();
+    const data = await response.json();
 
     return res.status(200).json({
       text: data.text,
       language: data.language || 'nl',
-      model: 'voxtral-mini-2602',
+      model: 'whisper-1',
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
