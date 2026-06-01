@@ -1,0 +1,77 @@
+.transcript-view {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.transcript-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.transcript-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.transcript-info h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.source-name {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transcript-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.word-count {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-surface-hover);
+  color: var(--color-text-muted);
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  transition: color 0.2s, background 0.2s;
+}
+
+.copy-btn:hover {
+  color: var(--color-text);
+  background: #405060;
+}
+
+.transcript-text {
+  padding: 24px;
+  font-size: 0.95rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-text);
+  max-height: 400px;
+  overflow-y: auto;
+}
