@@ -6,7 +6,7 @@ import { execFileSync } from 'child_process';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Supported by gpt-4o-mini-transcribe: mp3, mp4, mpeg, mpga, m4a, wav, webm
+// Supported by gpt-4o-transcribe: mp3, mp4, mpeg, mpga, m4a, wav, webm
 const SUPPORTED_BY_GPT4O = ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm'];
 
 function detectExt(audioFormat) {
@@ -67,7 +67,7 @@ export default async (req, res) => {
     const ext = detectExt(audioFormat);
     const needsConversion = !isSupported(ext, audioFormat);
 
-    const model = 'gpt-4o-mini-transcribe';
+    const model = 'gpt-4o-transcribe';
     const fileExt = needsConversion ? 'mp3' : ext;
 
     tmpPath = path.join(os.tmpdir(), `klets-audio-${Date.now()}.${ext}`);
@@ -83,6 +83,7 @@ export default async (req, res) => {
     const transcription = await openai.audio.transcriptions.create({
       model,
       file: fs.createReadStream(filePath),
+      prompt: 'Letterlijke transcriptie. De spreker is een NT2-cursist die Nederlands leert. Voeg geen woorden toe. Verbeter de grammatica niet. Schrijf exact wat er gezegd wordt.',
       response_format: 'json',
     });
 
