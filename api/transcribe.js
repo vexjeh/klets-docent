@@ -2,22 +2,12 @@ import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { execFileSync } from 'child_process';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Supported by gpt-4o-mini-transcribe: mp3, mp4, mpeg, mpga, m4a, wav, webm
-const GPT4O_SUPPORTED = ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm'];
-
-function pickModel(audioFormat, ext) {
-  // Check if format is supported by gpt-4o-mini-transcribe
-  const normalized = (audioFormat || '').toLowerCase();
-  if (GPT4O_SUPPORTED.includes(ext)) return 'gpt-4o-mini-transcribe';
-  if (normalized.includes('mp3') || normalized.includes('mpeg')) return 'gpt-4o-mini-transcribe';
-  if (normalized.includes('m4a') || normalized.includes('mp4')) return 'gpt-4o-mini-transcribe';
-  if (normalized.includes('wav')) return 'gpt-4o-mini-transcribe';
-  if (normalized.includes('webm')) return 'gpt-4o-mini-transcribe';
-  return 'whisper-1';
-}
+const SUPPORTED_BY_GPT4O = ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm'];
 
 function detectExt(audioFormat) {
   const fmt = (audioFormat || '').toLowerCase();
@@ -29,6 +19,30 @@ function detectExt(audioFormat) {
   if (fmt.includes('flac')) return 'flac';
   if (fmt.includes('aac')) return 'aac';
   return 'webm';
+}
+
+function isSupported(ext, audioFormat) {
+  const fmt = (audioFormat || '').toLowerCase();
+  if (SUPPORTED_BY_GPT4O.includes(ext)) return true;
+  if (fmt.includes('mp3') || fmt.includes('mp4') || fmt.includes('mpeg')) return true;
+  if (fmt.includes('m4a') || fmt.includes('wav') || fmt.includes('webm')) return true;
+  return false;
+}
+
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const FFMPEG_PATH = require('@ffmpeg-installer/ffmpeg').path;
+
+function convertToMp3(inputPath, outputPath) {
+  execFileSync(FFMPEG_PATH, [
+    '-y',                   // overwrite output
+    '-i', inputPath,        // input file
+    '-acodec', 'libmp3lame', // mp3 codec
+    '-ac', '1',             // mono (all we need for speech)
+    '-ar', '16000',         // 16kHz (Whisper standard sample rate)
+    '-ab', '64k',           // 64kbps is fine for speech
+    outputPath,
+  ], { timeout: 30000 });
 }
 
 export default async (req, res) => {
@@ -47,18 +61,28 @@ export default async (req, res) => {
   }
 
   let tmpPath = null;
+  let convertedPath = null;
   try {
     const audioBuffer = Buffer.from(audioBase64, 'base64');
     const ext = detectExt(audioFormat);
-    const model = pickModel(audioFormat, ext);
+    const needsConversion = !isSupported(ext, audioFormat);
+
+    const model = 'gpt-4o-mini-transcribe';
+    const fileExt = needsConversion ? 'mp3' : ext;
 
     tmpPath = path.join(os.tmpdir(), `klets-audio-${Date.now()}.${ext}`);
     fs.writeFileSync(tmpPath, audioBuffer);
 
+    if (needsConversion) {
+      convertedPath = path.join(os.tmpdir(), `klets-audio-${Date.now()}.mp3`);
+      convertToMp3(tmpPath, convertedPath);
+    }
+
+    const filePath = convertedPath || tmpPath;
+
     const transcription = await openai.audio.transcriptions.create({
       model,
-      file: fs.createReadStream(tmpPath),
-      ...(model === 'whisper-1' ? { language: 'nl', temperature: 0 } : {}),
+      file: fs.createReadStream(filePath),
       response_format: 'json',
     });
 
@@ -74,8 +98,8 @@ export default async (req, res) => {
       detail: err.message,
     });
   } finally {
-    if (tmpPath) {
-      try { fs.unlinkSync(tmpPath); } catch {}
-    }
+    [tmpPath, convertedPath].forEach(p => {
+      if (p) try { fs.unlinkSync(p); } catch {}
+    });
   }
 };
