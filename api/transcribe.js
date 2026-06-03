@@ -1,12 +1,16 @@
-const OPENAI_BASE = 'https://api.openai.com/v1';
+import OpenAI from 'openai';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
+  if (!process.env.OPENAI_API_KEY) {
     return res.status(500).json({ error: 'OPENAI_API_KEY niet ingesteld' });
   }
 
@@ -16,47 +20,37 @@ export default async (req, res) => {
     return res.status(400).json({ error: 'Geen audio data (audioBase64)' });
   }
 
+  let tmpPath = null;
   try {
     const audioBuffer = Buffer.from(audioBase64, 'base64');
-
-    // Build multipart form for Whisper
-    const form = new FormData();
     const ext = (audioFormat || 'audio/webm').includes('mp3') ? 'mp3' :
                 (audioFormat || '').includes('m4a') ? 'm4a' :
                 (audioFormat || '').includes('wav') ? 'wav' : 'webm';
-    const mime = audioFormat || 'audio/webm';
-    const blob = new Blob([audioBuffer], { type: mime });
-    form.append('file', blob, `audio.${ext}`);
-    form.append('model', 'whisper-1');
-    form.append('language', 'nl');
-    form.append('temperature', '0');
-    form.append('response_format', 'json');
 
-    const response = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: form,
+    // Write to temp file for reliable streaming
+    tmpPath = path.join(os.tmpdir(), `klets-audio-${Date.now()}.${ext}`);
+    fs.writeFileSync(tmpPath, audioBuffer);
+
+    const transcription = await openai.audio.transcriptions.create({
+      model: 'gpt-4o-mini-transcribe',
+      file: fs.createReadStream(tmpPath),
+      response_format: 'json',
     });
-
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('Whisper error:', response.status, err);
-      return res.status(response.status).json({
-        error: `Transcriptie mislukt: ${response.status}`,
-        detail: err,
-      });
-    }
-
-    const data = await response.json();
 
     return res.status(200).json({
-      text: data.text,
-      language: data.language || 'nl',
-      model: 'whisper-1',
+      text: transcription.text,
+      language: 'nl',
+      model: 'gpt-4o-mini-transcribe',
     });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error('Transcriptie error:', err.status, err.message, err);
+    return res.status(err.status || 500).json({
+      error: `Transcriptie mislukt: ${err.status || 500}`,
+      detail: err.message,
+    });
+  } finally {
+    if (tmpPath) {
+      try { fs.unlinkSync(tmpPath); } catch {}
+    }
   }
 };
