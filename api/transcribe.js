@@ -27,9 +27,8 @@ export default async (req, res) => {
     const mime = audioFormat || 'audio/webm';
     const blob = new Blob([audioBuffer], { type: mime });
     form.append('file', blob, `audio.${ext}`);
-    form.append('model', 'whisper-1');
+    form.append('model', 'gpt-4o-mini-transcribe');
     form.append('language', 'nl');
-    form.append('prompt', 'Letterlijke transcriptie. Voeg geen woorden toe.');
     form.append('temperature', '0');
     form.append('response_format', 'json');
 
