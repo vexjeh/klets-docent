@@ -19,7 +19,7 @@ export default async (req, res) => {
   try {
     const audioBuffer = Buffer.from(audioBase64, 'base64');
 
-    // Build multipart form for transcription
+    // Build multipart form for Whisper
     const form = new FormData();
     const ext = (audioFormat || 'audio/webm').includes('mp3') ? 'mp3' :
                 (audioFormat || '').includes('m4a') ? 'm4a' :
@@ -27,7 +27,9 @@ export default async (req, res) => {
     const mime = audioFormat || 'audio/webm';
     const blob = new Blob([audioBuffer], { type: mime });
     form.append('file', blob, `audio.${ext}`);
-    form.append('model', 'gpt-4o-mini-transcribe');
+    form.append('model', 'whisper-1');
+    form.append('language', 'nl');
+    form.append('temperature', '0');
     form.append('response_format', 'json');
 
     const response = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
@@ -40,7 +42,7 @@ export default async (req, res) => {
 
     if (!response.ok) {
       const err = await response.text();
-      console.error('OpenAI transcription error:', response.status, err);
+      console.error('Whisper error:', response.status, err);
       return res.status(response.status).json({
         error: `Transcriptie mislukt: ${response.status}`,
         detail: err,
@@ -52,7 +54,7 @@ export default async (req, res) => {
     return res.status(200).json({
       text: data.text,
       language: data.language || 'nl',
-      model: 'gpt-4o-mini-transcribe',
+      model: 'whisper-1',
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
