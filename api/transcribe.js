@@ -40,8 +40,9 @@ export default async (req, res) => {
 
     if (!response.ok) {
       const err = await response.text();
+      console.error('OpenAI transcription error:', response.status, err);
       return res.status(response.status).json({
-        error: `Whisper transcriptie mislukt: ${response.status}`,
+        error: `Transcriptie mislukt: ${response.status}`,
         detail: err,
       });
     }
@@ -51,7 +52,7 @@ export default async (req, res) => {
     return res.status(200).json({
       text: data.text,
       language: data.language || 'nl',
-      model: 'whisper-1',
+      model: 'gpt-4o-mini-transcribe',
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
