@@ -19,7 +19,7 @@ export default async (req, res) => {
   try {
     const audioBuffer = Buffer.from(audioBase64, 'base64');
 
-    // Build multipart form for Whisper
+    // Build multipart form for transcription
     const form = new FormData();
     const ext = (audioFormat || 'audio/webm').includes('mp3') ? 'mp3' :
                 (audioFormat || '').includes('m4a') ? 'm4a' :
@@ -28,8 +28,6 @@ export default async (req, res) => {
     const blob = new Blob([audioBuffer], { type: mime });
     form.append('file', blob, `audio.${ext}`);
     form.append('model', 'gpt-4o-mini-transcribe');
-    form.append('language', 'nl');
-    form.append('temperature', '0');
     form.append('response_format', 'json');
 
     const response = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
