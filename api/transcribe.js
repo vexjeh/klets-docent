@@ -83,7 +83,7 @@ export default async (req, res) => {
     const transcription = await openai.audio.transcriptions.create({
       model,
       file: fs.createReadStream(filePath),
-      prompt: 'Letterlijke transcriptie. De spreker is een NT2-cursist die Nederlands leert. Voeg geen woorden toe. Verbeter de grammatica niet. Schrijf exact wat er gezegd wordt.',
+      prompt: 'Spreektaal transcriptie. Spontaan gesproken Nederlands heeft korte zinnen, informele vormen en aarzelingen — schrijf het precies zoals het klinkt. Geen correcties.',
       response_format: 'json',
     });
 
