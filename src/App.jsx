@@ -34,9 +34,11 @@ function App() {
               <Uploader onTranscriptReady={handleTranscriptReady} />
               <TranscriptView transcript={transcript} fileName={fileName} />
             </section>
+            {/*
             <section className="analysis-section">
               <AnalysisChat transcript={transcript} />
             </section>
+            */}
           </div>
         )}
       </main>
