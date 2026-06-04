@@ -83,18 +83,7 @@ export default async (req, res) => {
     const transcription = await openai.audio.transcriptions.create({
       model,
       file: fs.createReadStream(filePath),
-      prompt: `Letterlijke transcriptie — spreektaal, geen schrijftaal.
-De spreker is een NT2-cursist op beginnersniveau.
-- Behoud "je", verander NOOIT naar "u".
-- Behoud "hoop", "vind", "weet", "kan" — verander NOOIT naar "hopen", "vinden", "weten", "kunnen".
-- Behoud stotteringen en herhalingen ("ik ik ik", "d-d-dat") exact zoals gezegd.
-- Behoud aarzelingen ("uh", "eh", "ehm").
-- Voeg GEEN lidwoorden (de/het/een) toe waar niet gesproken.
-- Verbeter NIKS. GEEN grammar correction. Exact wat er klinkt.
-Voorbeelden:
-  "ik hoop dat" → NIET "we hopen dat"
-  "je hebt" → NIET "u hebt"
-  "ik ik ik weet" → NIET "ik weet"`,
+      prompt: 'Letterlijke transcriptie. De spreker is een NT2-cursist die Nederlands leert. Voeg geen woorden toe. Verbeter de grammatica niet. Schrijf exact wat er gezegd wordt.',
       response_format: 'json',
     });
 
