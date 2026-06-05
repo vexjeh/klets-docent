@@ -23,8 +23,10 @@ function detectExt(audioFormat) {
 
 function isSupported(ext, audioFormat) {
   const fmt = (audioFormat || '').toLowerCase();
+  // Force conversion for video files (mp4 container, video/* MIME) — strip video track, send only audio
+  if (ext === 'mp4' || fmt.includes('video/')) return false;
   if (SUPPORTED_BY_GPT4O.includes(ext)) return true;
-  if (fmt.includes('mp3') || fmt.includes('mp4') || fmt.includes('mpeg')) return true;
+  if (fmt.includes('mp3') || fmt.includes('mpeg')) return true;
   if (fmt.includes('m4a') || fmt.includes('wav') || fmt.includes('webm')) return true;
   return false;
 }

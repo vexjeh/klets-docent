@@ -22,9 +22,9 @@ export default function Uploader({ onTranscriptReady }) {
   const processFile = useCallback(async (file) => {
     if (!file) return;
 
-    const validTypes = ['audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/mp4', 'audio/ogg', 'audio/opus'];
+    const validTypes = ['audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/mp4', 'audio/ogg', 'audio/opus', 'video/mp4'];
     if (!validTypes.includes(file.type) && !file.name.match(/\.(webm|mp3|wav|m4a|mp4|ogg|opus|flac|aac)$/i)) {
-      setError('Ongeldig audioformaat. Gebruik MP3, WAV, M4A, WebM, OGG of Opus.');
+      setError('Ongeldig bestand. Gebruik MP3, WAV, M4A, MP4, WebM, OGG of Opus.');
       return;
     }
 
@@ -96,7 +96,7 @@ export default function Uploader({ onTranscriptReady }) {
             <>
               <h2>Audiofragment uploaden</h2>
               <p className="drop-hint">Sleep een audiobestand hierheen of klik om te kiezen</p>
-              <p className="formats">MP3, WAV, M4A, WebM, OGG, Opus, FLAC</p>
+              <p className="formats">MP3, WAV, M4A, MP4, WebM, OGG, Opus, FLAC</p>
             </>
           ) : (
             <>
@@ -111,7 +111,7 @@ export default function Uploader({ onTranscriptReady }) {
           <input
             ref={fileInputRef}
             type="file"
-            accept="audio/*"
+            accept="audio/*,video/mp4"
             onChange={handleFileSelect}
             hidden
           />
