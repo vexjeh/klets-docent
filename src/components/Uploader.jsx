@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { Upload, FileAudio, Trash2, Loader2, Video } from 'lucide-react';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { transcribeAudio, analyzeTranscript } from '../services/api';
 import TranscriptView from './TranscriptView';
 import AnalysisChat from './AnalysisChat';
@@ -13,6 +15,32 @@ const STATES = {
   ERROR: 'error',
 };
 
+// ffmpeg.wasm core files — loaded from CDN (gecached door browser na 1e keer)
+const FFMPEG_CORE_URL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+
+// Singleton FFmpeg instantie (lazy loading, eenmalig)
+let ffmpegInstance = null;
+let ffmpegLoading = null;
+
+async function getFFmpeg() {
+  if (ffmpegInstance?.loaded) return ffmpegInstance;
+  if (ffmpegLoading) return ffmpegLoading;
+
+  ffmpegInstance = new FFmpeg();
+  ffmpegInstance.on('log', ({ message }) => {
+    console.log('[ffmpeg.wasm]', message);
+  });
+
+  ffmpegLoading = (async () => {
+    const coreURL = await toBlobURL(`${FFMPEG_CORE_URL}/ffmpeg-core.js`, 'text/javascript');
+    const wasmURL = await toBlobURL(`${FFMPEG_CORE_URL}/ffmpeg-core.wasm`, 'application/wasm');
+    await ffmpegInstance.load({ coreURL, wasmURL });
+    return ffmpegInstance;
+  })();
+
+  return ffmpegLoading;
+}
+
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'avi', 'mkv', 'webm'];
 const AUDIO_ONLY_EXTENSIONS = ['webm', 'mp3', 'wav', 'm4a', 'ogg', 'opus', 'flac', 'aac'];
 
@@ -23,107 +51,52 @@ function isVideoFile(file) {
 }
 
 /**
- * Extract audio from a video file using the browser's built-in decoders.
- * Creates a hidden <video> element, captures audio via MediaRecorder.
+ * Extract audio from a video file using ffmpeg.wasm.
+ * Verwerkt in seconden i.p.v. real-time — ongeacht de videolengte.
+ * Gebruikt AAC 16kHz mono voor kleine bestandsgrootte + OpenAI-compatibiliteit.
  */
-function extractAudioFromVideo(videoFile) {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
-    video.crossOrigin = 'anonymous';
+async function extractAudioFromVideo(videoFile) {
+  const ffmpeg = await getFFmpeg();
 
-    const objectUrl = URL.createObjectURL(videoFile);
-    video.src = objectUrl;
+  const inputExt = videoFile.name.split('.').pop()?.toLowerCase() || 'mp4';
+  const inputName = `input-${Date.now()}.${inputExt}`;
+  const outputName = `output-${Date.now()}.m4a`;
 
-    const cleanup = () => {
-      URL.revokeObjectURL(objectUrl);
-      video.removeAttribute('src');
-      video.load();
-    };
+  try {
+    // Schrijf video naar ffmpeg's virtuele filesystem
+    ffmpeg.writeFile(inputName, await fetchFile(videoFile));
 
-    video.onerror = () => {
-      cleanup();
-      reject(new Error('Kon videobestand niet laden. Is het een geldig MP4 bestand?'));
-    };
+    // Extraheer audio: geen video, AAC 16kHz mono, 64kbps
+    await ffmpeg.exec([
+      '-i', inputName,
+      '-vn',                    // geen video track
+      '-c:a', 'aac',            // AAC codec
+      '-ac', '1',               // mono
+      '-ar', '16000',           // 16kHz sample rate
+      '-b:a', '64k',            // 64kbps (ruim voldoende voor spraak)
+      '-y',                     // overschrijf output
+      outputName,
+    ]);
 
-    video.onloadedmetadata = () => {
-      // Safety: limit to 30 minutes of video
-      if (video.duration > 1800) {
-        cleanup();
-        reject(new Error('Video is langer dan 30 minuten. Kies een korter bestand.'));
-        return;
-      }
+    // Lees het resultaat uit
+    const data = await ffmpeg.readFile(outputName);
+    const audioBlob = new Blob([data], { type: 'audio/mp4' });
 
-      let audioContext;
-      try {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      } catch (e) {
-        cleanup();
-        reject(new Error('Je browser ondersteunt geen audioverwerking.'));
-        return;
-      }
+    // Opruimen virtueel filesystem
+    try { ffmpeg.deleteFile(inputName); } catch {}
+    try { ffmpeg.deleteFile(outputName); } catch {}
 
-      let source;
-      try {
-        source = audioContext.createMediaElementSource(video);
-      } catch (e) {
-        audioContext.close();
-        cleanup();
-        reject(new Error('Kon audiospoor niet uitlezen uit deze video.'));
-        return;
-      }
+    if (audioBlob.size === 0) {
+      throw new Error('Geen audio gevonden in deze video.');
+    }
 
-      const dest = audioContext.createMediaStreamDestination();
-      source.connect(dest);
-
-      // Prefer opus/webm (widely supported, good quality)
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
-
-      const chunks = [];
-      const recorder = new MediaRecorder(dest.stream, { mimeType });
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-
-      recorder.onstop = () => {
-        source.disconnect();
-        audioContext.close();
-        cleanup();
-
-        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        if (audioBlob.size === 0) {
-          reject(new Error('Geen audio gevonden in deze video.'));
-          return;
-        }
-        resolve(audioBlob);
-      };
-
-      recorder.onerror = () => {
-        source.disconnect();
-        audioContext.close();
-        cleanup();
-        reject(new Error('Fout bij het verwerken van de audio.'));
-      };
-
-      recorder.start(1000); // collect in 1s chunks
-
-      video.play().catch((err) => {
-        recorder.stop(); // clean up
-        reject(new Error('Autoplay geweigerd. Klik nogmaals of gebruik een audioformaat.'));
-      });
-    };
-
-    // If video is very short, just wait for it to end
-    video.onended = () => {
-      // MediaRecorder stops itself when the stream ends? Actually no, we need to stop it explicitly.
-      // But we can't access recorder here... Instead, we rely on the duration check below.
-    };
-  });
+    return audioBlob;
+  } catch (err) {
+    // Opruimen bij fout
+    try { ffmpeg.deleteFile(inputName); } catch {}
+    try { ffmpeg.deleteFile(outputName); } catch {}
+    throw err;
+  }
 }
 
 export default function Uploader({ onTranscriptReady }) {
@@ -132,7 +105,6 @@ export default function Uploader({ onTranscriptReady }) {
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef(null);
-  const extractTimeoutRef = useRef(null);
 
   const processFile = useCallback(async (file) => {
     if (!file) return;
@@ -152,20 +124,19 @@ export default function Uploader({ onTranscriptReady }) {
       let audioFile = file;
       let audioFormat = file.type || 'audio/webm';
 
-      // Extract audio from video files client-side
+      // Extraheer audio uit video via ffmpeg.wasm (véél sneller dan real-time)
       if (isVideoFile(file)) {
         setState(STATES.EXTRACTING);
 
         const audioBlob = await extractAudioFromVideo(file);
 
-        // Create a new File with the audio data
-        audioFile = new File([audioBlob], file.name.replace(/\.[^.]+$/, '.webm'), { type: 'audio/webm' });
-        audioFormat = 'audio/webm';
+        audioFile = new File([audioBlob], file.name.replace(/\.[^.]+$/, '.m4a'), { type: 'audio/mp4' });
+        audioFormat = 'audio/mp4';
       }
 
       setState(STATES.TRANSCRIBING);
 
-      // Read file as base64
+      // Lees bestand als base64
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result.split(',')[1]);
@@ -209,6 +180,9 @@ export default function Uploader({ onTranscriptReady }) {
           <h2>Audio wordt uitgelezen uit video...</h2>
           <p className="file-name">{fileName}</p>
           <p className="hint">Videotrack wordt genegeerd, enkel audio wordt verwerkt</p>
+          <p className="hint" style={{ fontSize: '0.8em', opacity: 0.7 }}>
+            (ffmpeg.wasm — seconden i.p.v. minuten)
+          </p>
         </div>
       )}
 
@@ -238,7 +212,7 @@ export default function Uploader({ onTranscriptReady }) {
               <h2>Audiofragment uploaden</h2>
               <p className="drop-hint">Sleep een audio- of videobestand hierheen of klik om te kiezen</p>
               <p className="formats">MP3, WAV, M4A, MP4, WebM, OGG, Opus, FLAC</p>
-              <p className="video-note">📹 MP4 video: audio wordt automatisch uitgelezen, video genegeerd</p>
+              <p className="video-note">📹 MP4 video: audio wordt razendsnel uitgelezen via ffmpeg.wasm, video genegeerd</p>
             </>
           ) : (
             <>
